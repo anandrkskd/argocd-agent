@@ -30,7 +30,11 @@ export ARGOCD_AGENT_PRINCIPAL_CONTEXT=vcluster-control-plane
 export ARGOCD_AGENT_PRINCIPAL_NAMESPACE=argocd
 
 if test "${ARGOCD_AGENT_IN_CLUSTER}" = ""; then
-	IPADDR=$(ip r show default | sed -e 's,.*\ src\ ,,' | sed -e 's,\ metric.*$,,')
+	if [ $(uname -s) = "Darwin" ]; then 
+        IPADDR=$(ipconfig getifaddr en0)
+    else
+        IPADDR=$(ip r show default | sed -e 's,.*\ src\ ,,' | sed -e 's,\ metric.*$,,')
+    fi
 	ARGOCD_AGENT_GRPC_SVC=$IPADDR
 	ARGOCD_AGENT_GRPC_SAN="--ip 127.0.0.1,${IPADDR}"
 	ARGOCD_AGENT_RESOURCE_PROXY=${IPADDR}
