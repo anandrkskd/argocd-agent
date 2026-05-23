@@ -56,6 +56,22 @@ jobs:
       - name: Install Kustomize
         uses: syntaqx/setup-kustomize@4331ea02eec887906c9adbf7f431ca3db09908fd # v1.0.3
 
+      - name: Install yq
+        env:
+          YQ_VERSION: v4.53.2
+          # SHA-256 of yq_linux_amd64 from
+          # https://github.com/mikefarah/yq/releases/download/v4.53.2/checksums
+          YQ_SHA256: d56bf5c6819e8e696340c312bd70f849dc1678a7cda9c2ad63eebd906371d56b
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error --location --retry 3 \
+            --output /tmp/yq \
+            "https://github.com/mikefarah/yq/releases/download/${YQ_VERSION}/yq_linux_amd64"
+          echo "${YQ_SHA256}  /tmp/yq" | sha256sum --check --status
+          sudo install -m 0755 /tmp/yq /usr/local/bin/yq
+          rm -f /tmp/yq
+          yq --version
+
       - name: Generate new manifests
         run: |
           echo "Generating new manifests for version ${INPUTS_TARGET_VERSION}"
@@ -68,6 +84,27 @@ jobs:
         env:
           INPUTS_TARGET_VERSION: ${{ inputs.TARGET_VERSION }}
 
+      - name: Update Helm chart versions
+        run: |
+          echo "Updating Helm chart versions to v${INPUTS_TARGET_VERSION}"
+          CHART_DIR="install/helm-repo/argocd-agent-agent"
+
+          # Update appVersion in Chart.yaml
+          yq eval -i ".appVersion = \"v${INPUTS_TARGET_VERSION}\"" "${CHART_DIR}/Chart.yaml"
+
+          # Bump chart version Z-stream by 1 (e.g., 0.2.0 -> 0.2.1)
+          CURRENT_CHART_VERSION=$(yq eval '.version' "${CHART_DIR}/Chart.yaml")
+          NEW_CHART_VERSION=$(echo "${CURRENT_CHART_VERSION}" | awk -F. '{printf "%d.%d.%d", $1, $2, $3+1}')
+          yq eval -i ".version = \"${NEW_CHART_VERSION}\"" "${CHART_DIR}/Chart.yaml"
+
+          # Update image.tag in values.yaml
+          yq eval -i ".image.tag = \"v${INPUTS_TARGET_VERSION}\"" "${CHART_DIR}/values.yaml"
+
+          echo "Chart version: ${CURRENT_CHART_VERSION} -> ${NEW_CHART_VERSION}"
+          echo "App version: v${INPUTS_TARGET_VERSION}"
+        env:
+          INPUTS_TARGET_VERSION: ${{ inputs.TARGET_VERSION }}
+
       - name: Print changes to be pushed
         run: git --no-pager diff HEAD
 
@@ -76,7 +113,7 @@ jobs:
         with:
           commit-message: "release: Publish release ${{ inputs.TARGET_VERSION }}"
           title: "release: init ${{ inputs.TARGET_VERSION }} release on branch ${{ inputs.TARGET_BRANCH }}"
-          body: "Updating VERSION and manifests to use ${{ inputs.TARGET_VERSION }}"
+          body: "Updating VERSION, manifests, and Helm chart to use ${{ inputs.TARGET_VERSION }}"
           branch: init-release
           branch-suffix: random
           signoff: true

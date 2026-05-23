@@ -120,6 +120,46 @@ jobs:
           NEEDS_SETUP_VARIABLES_OUTPUTS_IMAGE_URI: ${{ needs.setup-variables.outputs.image_uri }}
           STEPS_PUSH_OUTPUTS_DIGEST: ${{ steps.push.outputs.digest }}
 
+  helm-chart:
+    name: Package and push Helm chart to OCI registry
+    needs:
+      - setup-variables
+    permissions:
+      contents: read
+    runs-on: ubuntu-24.04
+    if: github.repository == 'argoproj-labs/argocd-agent' || needs.setup-variables.outputs.allow_fork_releases == 'true'
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd #v6.0.2
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Install Helm
+        uses: azure/setup-helm@dda3372f752e03dde6b3237bc9431cdc2f7a02a2 # v5.0.0
+        with:
+          version: v3.20.2
+
+      - name: Login to OCI registry
+        run: |
+          echo "${REGISTRY_PASSWORD}" | helm registry login "${REGISTRY}" --username "${REGISTRY_USERNAME}" --password-stdin
+        env:
+          REGISTRY: ${{ needs.setup-variables.outputs.image_repository }}
+          REGISTRY_USERNAME: ${{ secrets.REGISTRY_USERNAME }}
+          REGISTRY_PASSWORD: ${{ secrets.REGISTRY_PASSWORD }}
+
+      - name: Package Helm chart
+        run: |
+          helm package install/helm-repo/argocd-agent-agent
+
+      - name: Push Helm chart to OCI registry
+        run: |
+          CHART_PACKAGE=$(ls argocd-agent-agent-*.tgz)
+          helm push "${CHART_PACKAGE}" "oci://${IMAGE_REPOSITORY}/${IMAGE_NAMESPACE}"
+        env:
+          IMAGE_REPOSITORY: ${{ needs.setup-variables.outputs.image_repository }}
+          IMAGE_NAMESPACE: ${{ needs.setup-variables.outputs.image_namespace }}
+
   container-provenance:
     name: Generate and push container attestations
     needs:
