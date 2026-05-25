@@ -76,6 +76,18 @@ fmt:
 .PHONY: build
 build: argocd-agent cli
 
+.PHONY: dev-env-kind
+dev-env-kind: cli
+	./hack/dev-env/setup-kind-env.sh create
+
+.PHONY: dev-env-kind-delete
+dev-env-kind-delete:
+	./hack/dev-env/setup-kind-env.sh delete
+
+.PHONY: dev-env-kind-status
+dev-env-kind-status:
+	./hack/dev-env/setup-kind-env.sh status
+
 .PHONY: setup-e2e
 setup-e2e: cli
 	./hack/dev-env/setup-vcluster-env.sh create
